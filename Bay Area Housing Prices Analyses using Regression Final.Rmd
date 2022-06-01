@@ -1,0 +1,859 @@
+---
+title: "Bay Area Housing Prices Analysis using Regression"
+author: "Group : Rengalakshmi Rajavenkataraman(10%), Lydia Liu(10%), Soonil Chung(10%), Elsa Lee"
+date: "03/13/2022"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+setwd("~/Documents/Econometrics/PUBLG100/term_project")
+getwd()
+
+```
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE,message=FALSE}
+##Import Libraries and set working directory
+
+#please uncomment the lines if any of the packages are not installed on your system 
+
+library("doBy")
+library(foreign)
+library(knitr)
+library(readstata13)
+library(AER)
+library(gdata)
+library(tidyverse) 
+library(dplyr)
+library(ggplot2)
+library(car)
+library(lattice)
+library(tidyr)
+library(caret)
+library(MASS)
+library(broom)
+library(ROCR)
+library(psych)
+library(caTools)
+library(stargazer)
+library(lmtest)
+library(sandwich)
+library(ggeffects)
+library(ggcorrplot)
+library(corrr)
+library(lattice)
+library(erer)
+library(RColorBrewer)
+#library(DescTools)
+
+cse=function(reg) {
+        rob=sqrt(diag(vcovHC(reg, type="HC1")))
+        return(rob)
+        }
+```
+<center>![](giphy2.gif)</center>
+
+## Abstract
+
+Buying a house is a big decision in many people’s lives. Since the pandemic hit, the housing median price in the Bay Area have increased by 44%[see table below]. Given that it is an important investment, this special decision takes a lot of time and evaluates a number of factors. We used data taken from 2020 sold houses information in the Bay Area, covering South Bay, North Bay, East Bay and Peninsula. The data set also includes data such as county median income, city crime rate.Our variable of interest is elementary school score. After considering 7 control variables and a interaction term, our model can explain around 60% of the variation in housing price. Our $\hat{β1}$ did not converge if comparing model-8 and model-9, the most likely reason was the lack of proxy variables such as house condition, whether house is recently revolted, # of floors. 
+
+In our analysis, we found housing price vs. interior living area/land size/house age/county median income are non-linear, so we logarithm these variables. Later we involved Log-Linear specification and Log-Log specification in our interpretation. We also dig deeply by introducing Interaction Term combing house age and lotsize to research the effect of house age on price to vary with the lotsize and the effect of lotsize on price to vary with house age.
+
+Our analysis still demonstrated a significant correlation between elementary school score and housing price, together with other control variables.
+
+<center>![](pic.png)</center>
+
+## Introduction
+***
+
+This research can be a useful guide for families or investors who are considering the real estate investment in the Bay Area, presenting an overview on how good schools, land size, house size, utility etc. impact the housing price. 
+
+To conduct a regression analysis, the project will start by selecting the theoretical determinants and picking ONE control variable for each determinant from the data set, then build regression models to analyze how control variables affect the $\hat{β1}$. Finally, we will process Joint Hypothesis Test to select a parsimonious regression model. 
+
+
+## Y Breakdown 
+***
+
+We have identified the following theoretical determinants that may impact the house prices:
+
+  * SCHOOL RATING - Parents in the Bay Area pay a lot of attention on children's education. The higher the school rating, the house nearby will be more expensive. As a proxy for school rating, we have a variable called ‘elemenscore’ which denotes the how well a school performs.
+
+  * HOUSE SIZE - The larger the house size, the more valuable it is. Hence, built-in area or the interior livable area is an important determinant and the variable 'interior_livable_area' is used to proxy the same. 
+  
+  * LAND SIZE - Land is scarce resource, especially in the Bay Area.  We observed that the newly built houses (say, after 1980s) may have a larger house size because they are built as stories of 2 floors or more. But they may have a smaller lotsize because land is a scarce resource. So we research on how the 'lotsize' impact the housing prices.
+
+  * HOUSE AGE - We think old houses are of poor quality and its price will be negatively impacted. 'house_age' is used to denotes the house age.
+  
+  * LOCAL BUY POWER - Our research covers all of the Bay area, namely, the South Bay, North Bay, East Bay and Peninsula. Income levels are different in each area. If the local residents have strong buy power, the housing prices will be competitive. 'countyincome' is used to proxy the local buy power.
+  
+  * UTILITY - A house having enough parking slots will positively impact the house price. 'garage' is used to denote the utility. This variable shows the number of garages.
+
+  * SAFETY - A neighborhood being safe is a concern when buyers consider purchasing a property. We use 'citycrime_rate' as a variable to proxy the safety factor. It is measured in percent.
+
+  * TYPE of PROPERTY - Single family or non single family will impact the house price. We use 'singfamily' to proxy the type of property. 1 denotes singlefamily, 0 denotes townhouse or condo.
+  
+For each theoretical aspect of housing price, we select ONE control variable to proxy for that determinant.
+Our research will focus on the impact of school ratings on housing prices in Bay Area. For the research, we pick elementary school ratings(elemenscore)  as the proxy for all kinds of school ratings.
+
+## Hypothesis Question
+***
+#### <b> Impact of School Rating on Housing Prices in Bay Area.</b>
+
+<b>$\sf{H_{O}}$</b> : There is no association between elementary school rating and 
+   house price.
+
+<b>$\sf{H_{A}}$</b> : School rating substantially affects the house price.
+
+ 
+* Dependent variable: 
+    + sold_priceK（log）
+* Independent Variables: 
+
+    + Variable of interest: elemenscore
+    + Control Variables: interior_livable_area (log), house_age (log), garage, countyincome (log), citycrime_rate, lotsize(log), singfamily
+
+## What does this data look like?
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+houprice <- read.csv("/Users/lydialiu/Documents/Econometrics/PUBLG100/term_project/houseprice_2020_bayarea_sold_house - with crime rates.csv")
+#str(houprice)
+```
+
+```{r}
+#remove columns we are not interested in. Numbers in the c() means the column sequence in the previous dataset.
+houprice1<- houprice[-c(1:2,4:5,7:9,17:18,21,24,27:32,34:35,37,39:42)]
+#str(houprice1)
+
+# change all columns name to lower class
+houprice1 <- houprice1 %>%
+  rename_with(tolower)
+
+#str(houprice1)
+
+#rename all the columns names for better readability:
+names(houprice1)<- c('sold_price','year_built','lotsize','bedrooms','bathrooms','fullbathrooms','interior_livable_area','total_space','garage','elemenscore','elemen_distance','midsch_score','midsch_distance','highsch_score','highsch_distance','taxbased_value','listed_price','last_sold_price','citycrime_rate','property_type','countyincome')
+#str(houprice1)
+
+# get the house age
+houprice1$house_age = as.integer(format(Sys.Date(), "%Y")) - houprice1$year_built
+
+#dummy house type
+houprice1$singfamily<-ifelse(houprice1$property_type == 'sin_family',1,0)
+houprice1$nonsingfamily<-ifelse(houprice1$property_type != 'sin_family',1,0)
+#houprice1$townhouse <- ifelse(houprice1$property_type == 'town_house',1,0)
+#houprice1$condo <-ifelse(houprice1$property_type == 'condo',1,0)
+#str(houprice1)
+
+#change price to thousand unit
+houprice1$taxbased_valueK <- houprice1$taxbased_value/1000
+houprice1$listed_priceK <- houprice1$listed_price/1000
+houprice1$last_sold_priceK <- houprice1$last_sold_price/1000
+houprice1$sold_priceK <- houprice1$sold_price/1000
+#str(houprice1)
+
+#remove redundant columns
+houprice1<-houprice1[,-c(1,2,4,16:18,20)]
+#str(houprice1)
+
+```
+
+```{r}
+#stargazer(houprice1, type="text", median=TRUE, iqr=TRUE,digits=1, title="Descriptive Statistics")
+```
+
+
+```{r}
+houprice1$sold_priceK <- log(houprice1$sold_priceK)
+houprice1$listed_priceK <- log(houprice1$listed_priceK)
+houprice1$last_sold_priceK <- log(houprice1$last_sold_priceK)
+houprice1$sold_priceK <- log(houprice1$sold_priceK)
+houprice1$interior_livable_area <- log(houprice1$interior_livable_area)
+#houprice1$garage <- log(houprice1$garage)
+houprice1$elemen_distance <-log(houprice1$elemen_distance)
+houprice1$countyincome <- log(houprice1$countyincome)
+houprice1$house_age <- log(houprice1$house_age)
+houprice1$lotsize <- log(houprice1$lotsize)
+
+```
+
+Let's import the 2020 sold house in the Bay Area from CSV, plot the data to see if there are any outliers and discuss on removing them.
+
+```{r warning=FALSE}
+par(mfrow=c(2,2))
+boxplot(x=houprice1$sold_priceK, xlab="sold_priceK",col=c('powderblue'))
+boxplot(x=houprice1$interior_livable_area, xlab="interior_livable_area",col=c('powderblue'))
+boxplot(x=houprice1$garage, xlab='garage',col=c('powderblue'))
+boxplot(x=houprice1$elemenscore, xlab='elemenscore',col=c('powderblue'))
+par(mfrow=c(2,2))
+boxplot(x=houprice1$elemen_distance, xlab='elemen_distance',col=c('powderblue'))
+boxplot(x=houprice1$citycrime_rate, xlab='citycrime_rate',col=c('powderblue'))
+boxplot(x=houprice1$countyincome, xlab='countyincome',col=c('powderblue'))
+boxplot(x=houprice1$house_age, xlab='house_age',col=c('powderblue'))
+#boxplot(x=houprice1$lotsize, xlab='lotsize',col=c('powderblue'))
+```
+
+There are NULL value on interior_livable_area, garage, elemenscore, elemen_distance, house_age and so on, we will process the NULL value use following methods:
+
+  * there are outliers on sold_price feature, so it should use median() approach
+  * there are outliers on interior_livable_area feature, so it should use median() approach
+  * there are outliers on garage feature, so it should use median() approach
+  * there are no outliers on elemenscore feature, so we can use mean() approach
+  * there are outliers on elemen_distance feature, so it should use median() approach
+  * there are outliers on city_crime_rate feature, so it should use median() approach
+  * there are outliers on countyincome feature, so it should use median() approach
+  * there are outliers  on house_age feature, so it should use median() approach
+  
+## Data Cleaninig and Exploration
+
+***
+
+```{r}
+# remove outliers
+houprice1 <- subset(houprice1, sold_priceK < 2.2 & sold_priceK > 1.75)
+houprice1 <- subset(houprice1, interior_livable_area < 8.5 & interior_livable_area > 6.5)
+houprice1 <- subset(houprice1, garage < 6.5 & garage > 0)
+houprice1 <- subset(houprice1, elemen_distance < 1.8)
+houprice1 <- subset(houprice1, house_age >2.52 & house_age < 6)
+houprice1 <- subset(houprice1, lotsize > 7 & lotsize <10)
+#houprice1 <- subset(houprice1, countyincome > 100000)
+```
+
+
+```{r warning=FALSE}
+# plots after removing outliers
+#par(mfrow=c(2,2))
+#boxplot(x=houprice1$sold_priceK, xlab="sold_priceK",col=c('powderblue'))
+#boxplot(x=houprice1$interior_livable_area, xlab="interior_livable_area",col=c('powderblue'))
+#boxplot(x=houprice1$garage, xlab='garage',col=c('powderblue'))
+#boxplot(x=houprice1$elemenscore, xlab='elemenscore',col=c('powderblue'))
+#par(mfrow=c(2,3))
+#boxplot(x=houprice1$elemen_distance, xlab='elemen_distance',col=c('powderblue'))
+#boxplot(x=houprice1$citycrime_rate, xlab='citycrime_rate',col=c('powderblue'))
+#boxplot(x=houprice1$countyincome, xlab='countyincome',col=c('powderblue'))
+#boxplot(x=houprice1$house_age, xlab='house_age',col=c('powderblue'))
+#boxplot(x=houprice1$lotsize, xlab='logsize',col=c('powderblue'))
+```
+
+#### Let's check for missing values 
+
+```{r}
+colSums(is.na(houprice1)) #check count of missing values before imputing
+```
+We can see that, 
+
+* bathrooms 102 missing values.
+* fullbathrooms 551 missing values.
+* elemensch_score 3 missing values.
+* midsch_score 691 missing values.
+* midsch_distance 690 missing values.
+* highsch_score 6 missing values.
+* highsch_distance 6 missing values.
+* taxbased_valueK 7 missing values.
+* last_sold_priceK 1644 missing values.
+
+#### After imputing the missing values
+
+```{r}
+#houprice1[is.na(houprice1$interior_livable_area) == TRUE, "interior_livable_area"] = median(houprice1$interior_livable_area, na.rm = TRUE)
+houprice1[is.na(houprice1$lotsize) == TRUE, "lotsize"] = median(houprice1$lotsize, na.rm = TRUE)
+houprice1[is.na(houprice1$bathrooms) == TRUE, "bathrooms"] = median(houprice1$bathrooms, na.rm = TRUE)
+houprice1[is.na(houprice1$fullbathrooms) == TRUE, "fullbathrooms"] = median(houprice1$fullbathrooms, na.rm = TRUE)
+#houprice1[is.na(houprice1$total_space) == TRUE, "total_space"] = median(houprice1$total_space, na.rm = TRUE)
+#houprice1[is.na(houprice1$garage) == TRUE, "garage"] = median(houprice1$garage, na.rm = TRUE)
+houprice1[is.na(houprice1$elemenscore) == TRUE, "elemenscore"] = round(mean(houprice1$elemenscore, na.rm = TRUE))
+#houprice1[is.na(houprice1$elemen_distance) == TRUE, "elemen_distance"] = median(houprice1$elemen_distance, na.rm = TRUE)
+houprice1[is.na(houprice1$midsch_score) == TRUE, "midsch_score"] = round(mean(houprice1$midsch_score, na.rm = TRUE))
+houprice1[is.na(houprice1$midsch_distance)== TRUE, "midsch_distance"] = median(houprice1$midsch_distance, na.rm = TRUE)
+houprice1[is.na(houprice1$highsch_score)== TRUE, "highsch_score"] = round(mean(houprice1$highsch_score, na.rm = TRUE))
+houprice1[is.na(houprice1$highsch_distance)== TRUE, "highsch_distance"] = median(houprice1$highsch_distance, na.rm = TRUE)
+houprice1[is.na(houprice1$taxbased_valueK)== TRUE, "taxbased_valueK"] = median(houprice1$taxbased_valueK, na.rm = TRUE)
+#houprice1[is.na(houprice1$listed_priceK)== TRUE, "listed_priceK"] = median(houprice1$listed_priceK, na.rm = TRUE)
+#houprice1[is.na(houprice1$citycrime_rate)== TRUE, "citycrime_rate"] = #median(houprice1$citycrime_rate, na.rm = TRUE)
+houprice1[is.na(houprice1$last_sold_priceK)== TRUE, "last_sold_priceK"] = median(houprice1$last_sold_priceK, na.rm = TRUE)
+#houprice1[is.na(houprice1$house_age) == TRUE, "house_age"] = median(houprice1$house_age, na.rm = TRUE)
+
+colSums(is.na(houprice1)) #check count of missing values after imputing
+```
+
+### Let's see the Descriptive Statistics after data cleasing
+```{r}
+stargazer(houprice1, type="text", median=TRUE, iqr=TRUE,digits=1, title="Descriptive Statistics")
+```
+
+Now that the data is free from missing values, let's compute the correlation to see if any features are highly correlated.
+  
+## Correlation between Independent Variables
+***
+```{r}
+#dev.off()
+ggcorrplot(cor(houprice1, use="pairwise.complete.obs"), p.mat = cor_pmat(houprice1), hc.order=FALSE, type='lower',lab=TRUE, lab_size=2)
+```
+
+Let us look at some correlations that are around or higher than 0.5. Correlations much lower than 0.5 can be assumed to not affect our analysis. 
+
+<body>
+<ul>
+<li><b> elemenscore and sold_priceK are highly correlated (0.58) comparing with other variables</b></li>
+<li><b> elemenscore and midsch_score,highsch_score are highly correlated (0.66, 0.56)</b></li>
+<li><b> bathrooms with interior_livable_area, and fullbathrooms are highly correlated (0.74, 0.76)</b> </li>
+<li><b> total space and garage are highly correlated (1)</b> </li>
+</ul>
+</body>
+
+
+## Analysis
+
+***
+#### 1.How does our Variable of Interest affect our dependent variable?
+
+From our expectations, <b>an increase in elemenscore should increase the house price.</b> 
+```{r warning=FALSE}
+Plot_1  = ggplot(houprice1, aes(x=elemenscore, y=sold_priceK)) + geom_point(col="blue")  +
+  labs(title = "School Rating vs House Price", x = "elementary school score", y = "log house price") +
+  
+  stat_smooth(method="lm", method.args=list(family=binomial(link="logit")), se=FALSE, col = "green" )
+  #stat_smooth(method = "gam", col = "red", se=FALSE)
+  suppressMessages(print(Plot_1))
+```
+
+## Let's add more control variables to our base model
+***
+### 2.Adding Control Variable: interior_livable_area (proxy House Size)
+
+```{r warning=FALSE}
+#------------------------------------Adding interior_livable_area--------------------------------
+Plot_2= ggplot(houprice1, aes(x=interior_livable_area, y=sold_priceK)) + geom_point(col="blue") + 
+  labs(title = "House Size vs House Price", x = "log interior livable area", y = "log house price") +
+ 
+  stat_smooth(method="lm",se=FALSE, col = "green" )
+  #stat_smooth(method = "gam", col = "red", se=FALSE)
+  suppressMessages(print(Plot_2))
+  
+```
+
+From the plot between <b>interior_livable_area</b> and dependent variable, it appears as property size increases, the house price increases.
+Lets see how <b>interior_livable_area</b> relates to elemenscore (variable of interest).
+
+```{r}
+cat("Correlation (X, Z):", cor(houprice1$elemenscore, houprice1$interior_livable_area))
+anova(lm(elemenscore ~ interior_livable_area, data=houprice1))
+```
+
+Now, when given a single argument to anova, it produces a table which tests whether the model terms are significant. So, through the line of code shown above, we are trying to show how ‘interior_livable_area’ relates to our variable of interest (elemenscore). From the results we can see that not only interior_livable_area is positively correlated with elemenscore, but also significant with 95% confidence. Thus establishing the relevance that corr (X, Z) > 0.
+
+  * As Z(interior_livable_area) affects Y positively, and corr(X,Z) > 0, we suspect presence of upward bias.
+
+```{r}
+fit1=lm(sold_priceK~elemenscore, data=houprice1)
+#summary(fit1)
+fit2 = lm(sold_priceK~elemenscore + interior_livable_area, data=houprice1)
+
+stargazer(fit1,fit2, se=list(cse(fit1),cse(fit2)), 
+        column.labels=c("Model-1", "Model-2"),
+        covariate.labels = c("elemenscore", "log interior livable area","Constant"),
+        title="House Price", type="text", 
+        star.cutoffs=c(0.05,0.01,0.001), df=FALSE, digits=4)
+
+```  
+  
+* From the model-2 results, we see that adding <b>interior_livable_area</b> decreased estimate of elemenscore, suggesting that model1 suffered from upward bias. 
+
+* Adjusted R-square increases from 0.3318 to 0.4677.
+
+
+<b>Interpretation</b>: \
+
+* Model-1: 
+  * elemenscore: An increase in elementary school score by 1, on average, will increase the housing price by 1.96%. Log-linear specification.
+* Model-2:
+  * elemenscore: Keeping all other things constant, an increase in elementary school score by 1, on average, will increase the housing price by 1.67%. Log-linear specification.
+  * log interior livable area: Keeping all other things constant, an increase in interior livable area by 1%, on average will increase the housing price by 0.0704%. Log-log specification.
+  
+### 3. Adding Control Variable: countyincome (proxy Local Buy Power)
+```{r}
+#------------------------------------Adding countyincome--------------------------------
+Plot_3= ggplot(houprice1, aes(x=countyincome, y=sold_priceK)) + geom_point(col="blue") +
+  labs(title = "County Median Income vs House Price", x = "log countyincome", y = "log sold_priceK") +
+  #stat_smooth(method = "gam", col = "red", se=FALSE)
+  stat_smooth(method="lm", se=FALSE, col = "green" )
+suppressMessages(print(Plot_3))
+```
+
+From the plot between <b>countyincome</b> and dependent variable, it appears as local buy power increases, the house price increases.
+
+Lets see how <b>countyincome</b> relates to elemenscore (variable of interest).
+
+```{r}
+cat("Correlation (X, Z):", cor(houprice1$elemenscore, houprice1$countyincome))
+anova(lm(elemenscore ~ countyincome, data=houprice1))
+```
+
+So, through the line of code shown above, we are trying to show how ‘countyincome’ relates to our variable of interest (elemenscore). From the results we can see that not only countyincome is positively correlated with elemenscore, but also significant with 95% confidence. Thus establishing the relevance that corr (X, Z) > 0.
+
+  * As Z(countyincome) affects Y positively, and corr(X,Z) > 0, we suspect presence of upward bias.
+
+```{r}
+
+fit3 = lm(sold_priceK~elemenscore + interior_livable_area + countyincome, data=houprice1)
+#summary(fit3)
+
+stargazer(fit1,fit2,fit3, se=list(cse(fit1),cse(fit2),cse(fit3)), 
+          column.labels=c("Model-1", "Model-2","Model-3"),
+          covariate.labels = c("elemenscore", "log interior livable area","log countyincome","Constant"),
+        title="House Price", type="text", 
+        star.cutoffs=c(0.05,0.01,0.001), df=FALSE, digits=4)
+```  
+  
+* From the model-3 results, we see that adding <b>countyincome</b> decrease estimate of elemenscore, suggesting that model-2 suffered from upward bias. 
+
+* Adjusted R-square increases from 0.4677 to 0.5219.
+
+<b>Interpretation</b>: \
+
+* Model-2:
+  * elemenscore: Keeping all other things constant, an increase in elementary school score by 1, on average, will increase the housing price by 1.67%. Log-linear specification.
+  * log interior livable area: Keeping all other things constant, an increase in interior livable area by 1%, on average will increase the housing price by 0.0704%. Log-log specification.
+* Model-3:
+  * elemenscore: Keeping all other things constant, an increase in elementary school score by 1, on average, will increase the housing price by 1.57%. Log-linear specification.
+  * log interior livable area: Keeping all other things constant, an increase in interior livable area by 1%, on average will increase the housing price by 0.069%. Log-log specification.
+  * log countyincome: Keeping all other things constant, an increase in county income by 1%, on average will increase the housing price by 0.2225%. Log-log specification.
+  
+### 4. Adding Control Variable: garage (proxy Utility)
+```{r}
+#------------------------------------Adding garage--------------------------------
+Plot_4= ggplot(houprice1, aes(x=garage, y=sold_priceK)) + geom_point(col="blue") +
+  labs(title = "No. of garages vs House Price", x = "# of garage", y = "log house price") +
+  stat_smooth(method="lm", se=FALSE, col = "green" )
+suppressMessages(print(Plot_4))
+```
+
+From the plot between number of <b>garage</b> and dependent variable, it appears as no. of garage increases, the house price increases.
+Lets see how <b>garage</b> relates to elemenscore (variable of interest).
+
+```{r}
+cat("Correlation (X, Z):", cor(houprice1$elemenscore, houprice1$garage))
+anova(lm(elemenscore ~ garage, data=houprice1))
+```
+
+So, through the line of code shown above, we are trying to show how ‘garage’ relates to our variable of interest (elemenscore). From the results we can see that not only garage is positively correlated with elemenscore, but also significant with 95% confidence. Thus establishing the relevance that corr (X, Z) > 0.
+
+  * As Z(garage) affects Y positively, and corr(X,Z) > 0, we suspect presence of upward bias.
+
+```{r}
+fit4 = lm(sold_priceK~elemenscore + interior_livable_area + countyincome + garage, data=houprice1)
+#summary(fit4)
+
+stargazer(fit1,fit2,fit3,fit4, se=list(cse(fit1),cse(fit2),cse(fit3),cse(fit4)), 
+          column.labels=c("Model-1", "Model-2","Model-3","Model-4"),
+          covariate.labels = c("elemenscore", "log interior livable area","log countyincome","garage","Constant"),
+        title="House Price", type="text", 
+        star.cutoffs=c(0.05,0.01,0.001), df=FALSE, digits=4)
+```  
+  
+* From the model-4 results, we see that adding <b>garage</b>, estimate of elemenscore remain unchanged. 
+
+* Adjusted R-square increases from 0.5219 to 0.5242.
+
+<b>Interpretation</b>: \
+
+* Model-3:
+  * elemenscore: Keeping all other things constant, an increase in elementary school score by 1, on average, will increase the housing price by 1.57%. Log-linear specification.
+  * log interior livable area: Keeping all other things constant, an increase in interior livable area by 1%, on average will increase the housing price by 0.069%. Log-log specification.
+  * log countyincome: Keeping all other things constant, an increase in county income by 1%, on average will increase the housing price by 0.2225%. Log-log specification.
+* Model-4:
+  * elemenscore: Keeping all other things constant, an increase in elementary school score by 1, on average, will increase the housing price by 1.57%. Log-linear specification.
+  * log interior livable area: Keeping all other things constant, an increase in interior livable area by 1%, on average will increase the housing price by 0.072%. Log-log specification.
+  * log countyincome: Keeping all other things constant, an increase in county income by 1%, on average will increase the housing price by 0.2211%. Log-log specification.
+  * garage: Keeping all other things constant, an increase in garage by 1, on average will decrease the housing price by 0.45%.When a property owns many garage, this property may be a duplex or mutilehome, which will decrease the housing value. Log-linear specification.
+
+### 5. Adding Control Variable:house_age (proxy House Age)
+```{r}
+#------------------------------------Adding house_age--------------------------------
+Plot_5= ggplot(houprice1, aes(x=house_age, y=sold_priceK)) + geom_point(col="blue") +
+  labs(title = "House Age vs House Price", x = "log house age", y = "log house price") +
+  #stat_smooth(method = "gam", col = "red", se=FALSE)
+  stat_smooth(method="lm", se=FALSE, col = "green" )
+suppressMessages(print(Plot_5))
+```
+
+We see that there is a positive linear relationship between <b>house_age</b> and the housing price.
+Let us see how <b> house_age </b> elementry school score (variable of interest).
+
+```{r}
+cat("Correlation (X, Z):", cor(houprice1$elemenscore, houprice1$house_age))
+anova(lm(elemenscore ~ house_age, data=houprice1))
+```
+
+So, through the line of code shown above, we are trying to show how ‘house_age’ relates to our variable of interest (elemenscore). From the results we can see that not only house_age is positively correlated with elemenscore, but also significant with 95% confidence. Thus establishing the relevance that corr (X, Z) > 0.
+
+  * As Z(house_age) affects Y positively, and corr(X,Z) > 0, we suspect presence of upward bias.
+
+```{r}
+fit5 = lm(sold_priceK~elemenscore + interior_livable_area + countyincome + garage + house_age, data=houprice1)
+#summary(fit5)
+
+stargazer(fit1, fit2, fit3,fit4,fit5, se=list(cse(fit1),cse(fit2),cse(fit3),cse(fit4),cse(fit5)), 
+          column.labels=c("Model-1", "Model-2","Model-3","Model-4","Model-5"),
+          covariate.labels = c("elemenscore", "log interior livable area","log countyincome","garage","log house age","Constant"),
+        title="House Price", type="text", 
+        star.cutoffs=c(0.05,0.01,0.001), df=FALSE, digits=4)
+```  
+
+* From the model-5 results, we see that adding <b>house_age</b> decrease estimate of elemenscore, suggesting that model-4 suffered from upward bias. 
+
+* Adjusted R-square increases from 0.5242 to 0.5781.
+
+<b>Interpretation</b>: \
+
+* Model-4:
+  * elemenscore: Keeping all other things constant, an increase in elementary school score by 1, on average, will increase the housing price by 1.57%. Log-linear specification.
+  * log interior livable area: Keeping all other things constant, an increase in interior livable area by 1%, on average will increase the housing price by 0.072%. Log-log specification.
+  * log countyincome: Keeping all other things constant, an increase in county income by 1%, on average will increase the housing price by 0.2211%. Log-log specification.
+  * garage: Keeping all other things constant, an increase in garage by 1, on average will decrease the housing price by 0.45%.When a property owns many garage, this property may be a duplex or multihome, which will decrease the housing value. Log-linear specification.
+  
+* Model-5:
+  * elemenscore: Keeping all other things constant, an increase in elementary school score by 1, on average, will increase the housing price by 1.42%. Log-linear specification.
+  * log interior livable area: Keeping all other things constant, an increase in interior livable area by 1%, on average will increase the housing price by 0.0893%. Log-log specification.
+  * log countyincome: Keeping all other things constant, an increase in county income by 1%, on average will increase the housing price by 0.2279%. Log-log specification.
+  * garage: Keeping all other things constant, an increase in garage by 1, on average will decrease the housing price by 0.23%.When a property owns many garage, this property may be a duplex or mutilehome, which will decrease the housing value. Log-linear specification.
+  * log of house age: Keeping all other things constant, an increase in house age by 1%, on average will increase the housing price by 0.0357%. Log-log specification.
+
+### 6. Adding Control Variable: Crime rates (proxy Safety)
+```{r}
+Plot_6= ggplot(houprice1, aes(x=citycrime_rate, y=sold_priceK)) + geom_point(col="blue") +
+  labs(title = "city crime rate vs House Price", x = "citycrime_rate", y = "log house price") +
+  stat_smooth(method="lm", se=TRUE, col = "green" )
+suppressMessages(print(Plot_6))
+```
+
+We see that there is a negative linear relationship between <b>citycrime_rate</b> and the housing price.
+Let us see how <b> citycrime_rate </b> elementry school score (variable of interest).
+
+```{r}
+cat("Correlation (X, Z):", cor(houprice1$elemenscore, houprice1$citycrime_rate))
+anova(lm(elemenscore ~ citycrime_rate, data=houprice1))
+```
+
+So, through the line of code shown above, we are trying to show how ‘citycrime_rate’ relates to our variable of interest (elemenscore). From the results we can see that not only citycrime_rate is negatively correlated with elemenscore, but also significant with 95% confidence. Thus establishing the relevance that corr (X, Z) < 0.
+
+  * As Z(citycrime_rate) affects Y negatively, and corr(X,Z) < 0, we suspect presence of upward bias.
+
+```{r }
+
+fit6 = lm(sold_priceK~elemenscore + interior_livable_area + countyincome + garage + house_age + citycrime_rate, data=houprice1)
+#summary(fit7)
+
+stargazer(fit2,fit3,fit4,fit5,fit6, se=list(cse(fit1),cse(fit2),cse(fit3),cse(fit4),cse(fit5),cse(fit6)), 
+          column.labels=c("Model-2","Model-3","Model-4","Model-5","Model-6"),
+          covariate.labels = c("elemenscore", "log interior livable area","log countyincome","garage","log house age","citycrime rate","Constant"),
+        title="House Price", type="text", 
+        star.cutoffs=c(0.05,0.01,0.001), df=FALSE, digits=4)
+```  
+
+* From the model-6 results, we see that adding <b>house_age</b> decrease estimate of elemenscore, suggesting that model-5 suffered from upward bias. 
+
+* Adjusted R-square increases from 0.5781 to 0.5805.
+
+<b>Interpretation</b>: \
+
+* Model-5:
+  * elemenscore: Keeping all other things constant, an increase in elementary school score by 1, on average, will increase the housing price by 1.42%. Log-linear specification.
+  * log interior livable area: Keeping all other things constant, an increase in interior livable area by 1%, on average will increase the housing price by 0.0893%. Log-log specification.
+  * log countyincome: Keeping all other things constant, an increase in county income by 1%, on average will increase the housing price by 0.2279%. Log-log specification.
+  * garage: Keeping all other things constant, an increase in garage by 1, on average will decrease the housing price by 0.23%.When a property owns many garage, this property may be a duplex or mutilehome, which will decrease the housing value. Log-linear specification.
+  * log of house age: Keeping all other things constant, an increase in house age by 1%, on average will increase the housing price by 0.0357%. Log-log specification.
+
+* Model-6:
+  * elemenscore: Keeping all other things constant, an increase in elementary school score by 1, on average, will increase the housing price by 1.38%.
+  * log interior livable area: Keeping all other things constant, an increase in interior livable area by 1%, on average will increase the housing price by 0.0879%.
+  * log countyincome: Keeping all other things constant, an increase in county income by 1%, on average will increase the housing price by 0.2171%.
+  * garage: Keeping all other things constant, an increase in garage by 1, on average will decrease the housing price by 0.28%.
+  * log of house age: Keeping all other things constant, an increase in house age by 1%, on average will increase the housing price by 0.0358%.
+  * citycrime_rate: Keeping all other things constant, an increase in city crime rate by 1%, on average, will decrease the housing price by 0.3251%. Log-linear specification.Log-linear specification.
+
+### 7. Adding Control Variable: lotsize (proxy Land Size)
+```{r}
+Plot_7= ggplot(houprice1, aes(x=lotsize, y=sold_priceK)) + geom_point(col="blue") +
+  labs(title = "log Lotsize vs House Price", x = "log lotsize", y = "log house price") +
+  stat_smooth(method="lm", se=FALSE, col = "green" )
+suppressMessages(print(Plot_7))
+```
+
+We see that there is a positive linear relationship between <b>lotsize</b> and the housing price.
+Let us see how <b> lotsize </b> elementry school score (variable of interest).
+
+```{r}
+cat("Correlation (X, Z):", cor(houprice1$elemenscore, houprice1$lotsize))
+anova(lm(elemenscore ~ lotsize, data=houprice1))
+```
+
+So, through the line of code shown above, we are trying to show how ‘lotsize’ relates to our variable of interest (elemenscore). From the results we can see that not only lotsize is positively correlated with elemenscore, but also significant with 95% confidence. Thus establishing the relevance that corr (X, Z) > 0.
+
+  * As Z(lotsize) affects Y positively, and corr(X,Z) > 0, we suspect presence of upward bias.
+
+```{r}
+
+fit7 = lm(sold_priceK~elemenscore + interior_livable_area + countyincome + garage + house_age + citycrime_rate + lotsize, data=houprice1)
+#summary(fit7)
+
+stargazer(fit3,fit4,fit5,fit6,fit7, se=list(cse(fit3),cse(fit4),cse(fit5),cse(fit6),cse(fit7)), 
+          column.labels=c("Model-3","Model-4","Model-5","Model-6","Model-7"),
+          covariate.labels = c("elemenscore", "log interior livable area","log countyincome","garage","log house age","citycrime rate","log lotsize","Constant"),
+        title="House Price", type="text", 
+        star.cutoffs=c(0.05,0.01,0.001), df=FALSE, digits=4)
+```  
+
+* From the model-7 results, we see that adding <b>logsize</b>, estimate of elemenscore remains unchange, suggesting that model-6 does not suffer from bias. 
+
+* Adjusted R-square increases from 0.5805 to 0.5944.
+
+<b>Interpretation</b>: \
+
+* Model-6:
+  * elemenscore: Keeping all other things constant, an increase in elementary school score by 1, on average, will increase the housing price by 1.38%.
+  * log interior livable area: Keeping all other things constant, an increase in interior livable area by 1%, on average will increase the housing price by 0.0879%.
+  * log countyincome: Keeping all other things constant, an increase in county income by 1%, on average will increase the housing price by 0.2171%.
+  * garage: Keeping all other things constant, an increase in garage by 1, on average will decrease the housing price by 0.28%.
+  * log of house age: Keeping all other things constant, an increase in house age by 1%, on average will increase the housing price by 0.0358%.
+  * citycrime_rate: Keeping all other things constant, an increase in city crime rate by 1%, on average, will decrease the housing price by 0.3251%. Log-linear specification.Log-linear specification.
+
+* Model-7:
+  * elemenscore: Keeping all other things constant, an increase in elementary school score by 1, on average, will increase the housing price by 1.38%.
+  * log interior livable area: Keeping all other things constant, an increase in interior livable area by 1%, on average will increase the housing price by 0.0753%.
+  * log countyincome: Keeping all other things constant, an increase in county income by 1%, on average will increase the housing price by 0.2217%.
+  * garage: Keeping all other things constant, an increase in garage by 1, on average will decrease the housing price by 0.43%.
+  * log of house age: Keeping all other things constant, an increase in house age by 1%, on average will increase the housing price by 0.0278%.
+  * citycrime_rate: Keeping all other things constant, an increase in city crime rate by 1%, on average, will decrease the housing price by 0.2229%. Log-linear specification.Log-linear specification.
+  * lotsize: Keeping all other things constant, an increase in lotsize by 1%, on average, will decrease the housing price by 0.0171%. Log-linear specification.Log-linear specification.
+
+
+### 8.Adding Control Variable: single family (proxy Type of Property )
+
+```{r}
+
+
+Plot_8= ggplot(data = houprice1) + geom_bar(aes(x=singfamily, fill=sold_priceK))+
+  ggtitle(label = "Single Family vs. log house price")
+
+suppressMessages(print(Plot_8))
+
+```
+
+We see that there is a positive linear relationship between dummy variable <b>single family</b> and the housing price.
+Let us see how <b> singfamily </b> elementry school score (variable of interest).
+
+```{r}
+cat("Correlation (X, Z):", cor(houprice1$elemenscore, houprice1$singfamily))
+anova(lm(elemenscore ~ singfamily, data=houprice1))
+```
+
+
+So, through the line of code shown above, we are trying to show how ‘singfamily’ relates to our variable of interest (elemenscore). From the results we can see that not only single family is negatively correlated with elemenscore, but also significant with 95% confidence. Thus establishing the relevance that corr (X, Z) < 0.
+
+  * As Z(single family) affects Y positive, and corr(X,Z) < 0, we suspect presence of downward bias.
+
+```{r}
+
+fit8 = lm(sold_priceK~elemenscore + interior_livable_area + countyincome + garage + house_age + citycrime_rate + lotsize +singfamily, data=houprice1)
+#summary(fit7)
+
+stargazer(fit3,fit4,fit5,fit6,fit7,fit8, se=list(cse(fit3),cse(fit4),cse(fit5),cse(fit6),cse(fit7),cse(fit8)), 
+          column.labels=c("Model-3","Model-4","Model-5","Model-6","Model-7","Model-8"),
+         covariate.labels = c("elemenscore", "log interior livable area","log countyincome","garage","log house age","citycrime rate","log lotsize","singfamily","Constant"), 
+        title="House Price", type="text", 
+        star.cutoffs=c(0.05,0.01,0.001), df=FALSE, digits=4)
+```  
+
+* From the model-8 results, we see that adding <b>house_age</b> increase estimate of elemenscore, suggesting that model-7 suffered from downward bias. 
+
+* Adjusted R-square increases from 0.5944 to 0.5950.
+
+<b>Interpretation</b>: \
+
+* Model-7:
+  * elemenscore: Keeping all other things constant, an increase in elementary school score by 1, on average, will increase the housing price by 1.38%.
+  * log interior livable area: Keeping all other things constant, an increase in interior livable area by 1%, on average will increase the housing price by 0.0753%.
+  * log countyincome: Keeping all other things constant, an increase in county income by 1%, on average will increase the housing price by 0.2217%.
+  * garage: Keeping all other things constant, an increase in garage by 1, on average will decrease the housing price by 0.43%.
+  * log of house age: Keeping all other things constant, an increase in house age by 1%, on average will increase the housing price by 0.0278%.
+  * citycrime_rate: Keeping all other things constant, an increase in city crime rate by 1%, on average, will decrease the housing price by 0.2229%. Log-linear specification.Log-linear specification.
+  * lotsize: Keeping all other things constant, an increase in lotsize by 1%, on average, will decrease the housing price by 0.0171%. Log-linear specification.Log-linear specification.
+
+* Model-8:
+  * elemenscore: Keeping all other things constant, an increase in elementary school score by 1, on average, will increase the housing price by 1.39%.
+  * log interior livable area: Keeping all other things constant, an increase in interior livable area by 1%, on average will increase the housing price by 0.0759%.
+  * log countyincome: Keeping all other things constant, an increase in county income by 1%, on average will increase the housing price by 0.2219%.
+  * garage: Keeping all other things constant, an increase in garage by 1, on average will decrease the housing price by 0.41%.
+  * log of house age: Keeping all other things constant, an increase in house age by 1%, on average will increase the housing price by 0.0278%.
+  * citycrime_rate: Keeping all other things constant, an increase in city crime rate by 1%, on average, will decrease the housing price by 0.2427%. Log-linear specification.Log-linear specification.
+  * lotsize: Keeping all other things constant, an increase in lotsize by 1%, on average, will decrease the housing price by 0.0143%. Log-linear specification.Log-linear specification.
+  * singfamily: Keeping all other things constant, when the property is a single family house, on average, the housing price will increase by 0.84%.
+
+
+### 9. Adding interaction term (House Age * Land Size)
+
+From our analysis and based on our conceptual knowledge of realty, we find that the older houses may have larger lot sizes, as compared to newer houses. In this case, we expect the coefficient of the house age, which is a control variable, might be affected by the lot size. Thus, house price would also be affected to the extent of this connection.
+In order to factor for this relationship between house age and lot sizes, we have introduced an interaction term to the regression.
+
+So we combine the house_age and lotsize as an interaction item, to research the effect of house age on price to vary with the lotsize and the effect of lotsize on price to vary with house age.
+
+```{r echo=FALSE, warning=FALSE, fig.width=6.5, fig.height=6.5}
+ggplot(houprice1, aes(x=house_age, y=sold_priceK, colour=lotsize)) + geom_point(col="blue")+  geom_point(size=1) + labs(x = "log house age", y = "log house price") 
+```
+
+From the plots above, we can see the top right area is lighter than the bottom left area. The dots in top right area means the properties older and larger lotsize, and the housing price is higher. The dots in the bottom left area means otherwise.
+
+```{r echo=FALSE, warning=FALSE}
+mul = as.numeric(houprice1$house_age) * as.numeric(houprice1$lotsize)
+cat("Correlation (Y, Z):", cor(houprice1$sold_priceK, mul))
+```
+
+We see that interaction term positively affects Y. \
+Lets see how interaction term relates to elemenscore (variable of interest).
+
+```{r echo=FALSE, warning=FALSE}
+cat("Correlation (X, Z):", cor(houprice1$elemenscore, mul))
+anova(lm(elemenscore ~ (house_age*lotsize), data=houprice1))
+```
+
+Now, when given a single argument to anova, it produces a table which tests whether the interaction terms are significant. So, we are trying to show how interaction term relates to our variable of interest (elemenscore). From the results we can see that the interaction is positively correlated with elemenscore.
+
+As Z(interaction term) affects Y positively, and corr(X,Z) > 0, we suspect presence of upward bias.
+
+```{r echo=FALSE, warning=FALSE}
+fit9 = lm(sold_priceK~elemenscore + interior_livable_area + countyincome + garage + house_age + singfamily + citycrime_rate+ lotsize + house_age:lotsize, data=houprice1)
+#summary(fit8)
+
+stargazer(fit5,fit6,fit7,fit8,fit9, se=list(cse(fit5),cse(fit6),cse(fit7),cse(fit8),cse(fit9)),
+           column.labels=c("Model-5","Model-6","Model-7","Model-8","Model-9"),
+          covariate.labels = c("elemenscore", "log interior livable area","log countyincome","garage","log house age","citycrime rate","log lotsize","log houseage*lotsize","singfamily","Constant"),
+        title="House Price", type="text", 
+        star.cutoffs=c(0.05,0.01,0.001), df=FALSE, digits=4)
+```  
+
+* From the model-9 results, we see that adding <b>house_age*lotsize</b> decrease estimate of elemenscore, suggesting that model-8 suffered from upward bias. 
+* Adjusted R-square increases from 0.5950 to 0.5973.
+* Model-9 allows the effect of house age on price to vary with the lotsize and the effect of lotsize on price to vary with house age. 
+
+<b>Interpretation</b>: \
+
+* Model-8:
+  * elemenscore: Keeping all other things constant, an increase in elementary school score by 1, on average, will increase the housing price by 1.39%.
+  * log interior livable area: Keeping all other things constant, an increase in interior livable area by 1%, on average will increase the housing price by 0.0759%.
+  * log countyincome: Keeping all other things constant, an increase in county income by 1%, on average will increase the housing price by 0.2219%.
+  * garage: Keeping all other things constant, an increase in garage by 1, on average will decrease the housing price by 0.41%.
+  * log of house age: Keeping all other things constant, an increase in house age by 1%, on average will increase the housing price by 0.0278%.
+  * citycrime_rate: Keeping all other things constant, an increase in city crime rate by 1%, on average, will decrease the housing price by 0.2427%. Log-linear specification.Log-linear specification.
+  * lotsize: Keeping all other things constant, an increase in lotsize by 1%, on average, will decrease the housing price by 0.0143%. Log-linear specification.Log-linear specification.
+  * singfamily: Keeping all other things constant, when the property is a single family house, on average, the housing price will increase by 0.84%.
+  
+* Model-9: 
+  * the estimated effect of house age on housing price increase with lotsize: -0.076 + 0.0119*lotsize(log)
+  * the estimated effect of lotsize on housing price increase with house age: -0.306 + 0.0119*house_age(log)
+  
+  
+# Joint Hypothesis Testing Using F-Test
+
+After adding the Interaction term in Model-9 ,the value of $\hat{β1}$ converging to 0.0138, but we have applied all the valid variables in our dataset. Let's compare Model 8 and Model 9 using Joint Hypothesis Test to find the better model . 
+
+<b>$\sf{H_{O}}$</b>:β of interaction term =0
+
+<b>$\sf{H_{A}}$</b>:β of interaction term $\ne$ 0
+
+```{r}
+
+#reg1=lm(sold_priceK~STR+english+expn, data=houprice1)
+#lht(fit8, c("elemenscore=0", "interior_livable_area=0","countyincome=0","garage=0","house_age=0","singfamily=0","citycrime_rate=0"), white.adjust="hc1")
+anova(fit7,fit9)
+
+```
+
+The probability of seeing a difference is less than 0.05 (which is the alpha level associated with a 95% confidence level).
+
+The small p-value from the joint hypothesis test would lead us to conclude that at least one of the regression coefficients in the model is not equal to zero.
+
+Thus, we can reject the null hypothesis that coefficients are zero at any level of significance commonly used in practice.
+
+# Conclusion
+
+From our analytical study, the estimate of elemenscore remains stable after we add 7 more control variables and a interaction term, which present different theoretical determinants affecting housing price. We also conclude that Model 9 is better fit as what we have shown in the F-test and all the variables are significant at 5%.  
+Therefore, we can conclude the consistent evidence supporting a causal role of elementary school score in affecting housing price, thus establishing a causal relationship between the two.
+
+```{r}
+coeff1 = summary(fit1)$coefficients[2,1]
+coeff1=round(coeff1,digits=4)
+ 
+coeff2 = summary(fit2)$coefficients[2,1]
+coeff2=round(coeff2,digits=4)
+ 
+coeff3 = summary(fit3)$coefficients[2,1]
+coeff3=round(coeff3,digits=4)
+
+coeff4 = summary(fit4)$coefficients[2,1]
+coeff4=round(coeff4,digits=4)
+
+coeff5 = summary(fit5)$coefficients[2,1]
+coeff5=round(coeff5,digits=4)
+coeff5=signif(coeff5,digits=4)
+ 
+coeff6 = summary(fit6)$coefficients[2,1]
+coeff6=round(coeff6,digits=4) 
+coeff6=signif(coeff6,digits=4)
+
+coeff7 = summary(fit7)$coefficients[2,1]
+coeff7=round(coeff7,digits=4)
+coeff7=signif(coeff7,digits=4)
+
+coeff8 = summary(fit8)$coefficients[2,1]
+coeff8=round(coeff8,digits=4)
+coeff8=signif(coeff8,digits=4)
+
+coeff9 = summary(fit9)$coefficients[2,1]
+coeff9=round(coeff9,digits=4)
+coeff9=signif(coeff9,digits=4)
+
+price <- matrix(c (coeff1, coeff2, coeff3, coeff4, coeff5, coeff6,coeff7, coeff8,coeff9),ncol=9,byrow=TRUE)
+colnames(price) <- c("Model-1","Model-2","Model-3","Model-4","Model-5","Model-6","Model-7","Model-8","Model-9")
+rownames(price) <- c("elemenscore")
+price <- as.table(price)
+price
+```
+
+$\hat{β1}$= 0.0138 (significant with 95% confidence)
+
+* Looking at our model, we can say: <b>For every score an elementary school earns , on average, the house price will increase by 1.38%, holding other variables constant.</b> 
+
+* We have tried to identify the major drivers and used a proxy variable to factor each of them into the model. Having constructed over 9 linear models with a varied combination of features, we observe that towards the final output, the coefficients have approximately converged.
+
+* Adjusted R squared:
+We also see that the adjusted R square has improved significantly towards the end, that is, from 0.3318 in the model 1 to 0.5973 in model-9. Statistically, it is said that the ideal number for R squared in 0.7. Although our model has tried to cover all possible variables, it still appears that there is scope of improving the fit of the model.
+
+
+# Validity & Limitations
+
+Housing market is wide and is driven by eclectic micro and macro-economic factors. We have identified the potential limitations in the data available and possible reasons for the inability to establish the relationship more effectively.
+
+* <b><u>Threats to Internal Validity </u></b>:
+
+  + <b> Missing values</b>: We have imputed missing values using mean() and median() methods after checking for outliers in the independent variables.
+ 
+  + <b> Measurement errors </b>: Potential measurement error of the actual values of the dependent variable.
+ 
+  + <b> Omitted variable Bias</b> :  It is likely that the coefficients are not consistent given that there are various externalities which would result in other determining factors being undiscovered.
+
+* <b><u>Threats to External Validity</u></b>:
+
+  + <b> Buyer - specific preferences: There are personal preferences of buyers that are specific to each buyer and may not be common among the others (say, ventilation, parks and scenic views, beach facing views, proximity to buy essential supplies, public transport access) which cannot be generalized in a regression model. Hence, incorporating this feature is imperative but is impossible.
+  
+  + <b> Buyer Objectives: We have determined our variable of interest to be school rating. It is likely that a given buyer may not have school goers in their family (say, the buyers could be an aged couple after retirement or an accommodation shared by a group of college friends). In such cases, the variable of interest is not relevant in studying the relationship. Since there is no specific information about the buyer, this classification cannot be done.
+  
+  + <b> During the pandemic, there was a dire shortage of wood and raw materials required for construction due to supply chain bottlenecks. There was a hike in housing prices due to lack of supply. The relationship analysis does not consider such abnormalities.
+
+
+*** 
+\fancyfoot[CO,CE]{Thank you }
